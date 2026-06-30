@@ -1,6 +1,7 @@
-"""Рекурсивный обход папки и сбор метаданных файлов."""
+"""Рекурсивный обход папки и сохранение индекса в SQLite."""
 
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Сопоставление расширений с укрупнённым типом файла.
@@ -48,3 +49,42 @@ def scan_folder(root):
                 "file_type": file_type(ext),
             })
     return result
+
+
+def save_index(conn, files, root):
+    """Обновляет индекс в SQLite по результатам сканирования.
+
+    Новые файлы добавляются, существующие обновляются, а записи, которых
+    больше нет в папке, помечаются как 'missing'. Так индекс всегда отражает
+    текущее состояние выбранной папки.
+    """
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    seen = set()
+    for f in files:
+        seen.add(f["rel_path"])
+        conn.execute(
+            """
+            INSERT INTO files (rel_path, size, mtime, ext, file_type, status, scanned_at)
+            VALUES (:rel_path, :size, :mtime, :ext, :file_type, 'present', :scanned_at)
+            ON CONFLICT(rel_path) DO UPDATE SET
+                size       = excluded.size,
+                mtime      = excluded.mtime,
+                ext        = excluded.ext,
+                file_type  = excluded.file_type,
+                status     = 'present',
+                scanned_at = excluded.scanned_at
+            """,
+            {**f, "scanned_at": now},
+        )
+    # Файлы, которые были в индексе, но не встретились при обходе.
+    for row in conn.execute("SELECT rel_path FROM files WHERE status = 'present'").fetchall():
+        if row["rel_path"] not in seen:
+            conn.execute(
+                "UPDATE files SET status = 'missing' WHERE rel_path = ?",
+                (row["rel_path"],),
+            )
+    conn.execute(
+        "INSERT INTO scans (root, started_at, files_seen) VALUES (?, ?, ?)",
+        (str(Path(root).resolve()), now, len(files)),
+    )
+    conn.commit()
