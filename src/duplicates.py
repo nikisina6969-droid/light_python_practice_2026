@@ -44,3 +44,23 @@ def update_hashes(conn, root):
         updated += 1
     conn.commit()
     return updated
+
+
+def find_duplicates(conn):
+    """Возвращает группы файлов с одинаковым хэшем (2+ файла).
+
+    Формат: список кортежей (hash, size, [rel_path, ...]).
+    """
+    rows = conn.execute(
+        "SELECT hash, size, rel_path FROM files "
+        "WHERE status='present' AND hash IS NOT NULL ORDER BY hash, rel_path"
+    ).fetchall()
+    groups = {}
+    for r in rows:
+        groups.setdefault(r["hash"], {"size": r["size"], "paths": []})
+        groups[r["hash"]]["paths"].append(r["rel_path"])
+    result = [
+        (h, g["size"], g["paths"])
+        for h, g in groups.items() if len(g["paths"]) > 1
+    ]
+    return result
