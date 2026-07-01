@@ -1,6 +1,6 @@
 """Консольный индексатор папок. Точка входа.
 
-Этап 3: сканирование + подсчёт хэшей и поиск дубликатов.
+Полный вариант: сканирование, поиск дубликатов, сверка резервной копии.
 """
 
 import argparse
@@ -10,6 +10,7 @@ import db
 import scanner
 import report
 import duplicates
+import backup
 
 
 def build_parser():
@@ -27,6 +28,10 @@ def build_parser():
                         help="Показать только файлы с подстрокой в пути")
     parser.add_argument("--duplicates", action="store_true",
                         help="Посчитать хэши и показать группы дубликатов")
+    parser.add_argument("--backup", metavar="BACKUP_PATH",
+                        help="Сравнить папку с резервной копией по этому пути")
+    parser.add_argument("--history", action="store_true",
+                        help="Показать историю проверок резервной копии")
     return parser
 
 
@@ -45,12 +50,23 @@ def main(argv=None):
     files = scanner.scan_folder(target)
     scanner.save_index(conn, files, target)
 
-    if args.duplicates:
+    if args.backup:
+        bpath = Path(args.backup)
+        if not bpath.is_dir():
+            print(f"Ошибка: папка резервной копии не найдена: {bpath}")
+            conn.close()
+            return 1
+        diff = backup.compare(target, bpath)
+        backup.save_check(conn, target.resolve(), bpath.resolve(), diff)
+        report.print_backup(diff)
+    elif args.duplicates:
         duplicates.update_hashes(conn, target)
-        groups = duplicates.find_duplicates(conn)
-        report.print_duplicates(groups)
+        report.print_duplicates(duplicates.find_duplicates(conn))
     else:
         report.print_file_list(conn, args.filter_ext, args.filter_name)
+
+    if args.history:
+        report.print_history(conn)
 
     conn.close()
     return 0
