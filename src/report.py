@@ -13,12 +13,7 @@ def human_size(n):
 
 
 def print_file_list(conn, ext_filter=None, name_filter=None):
-    """Печатает индекс файлов из базы.
-
-    Фильтры (необязательные) ограничивают только вывод, не трогая индекс:
-      ext_filter  — показать файлы с расширением, напр. ".txt";
-      name_filter — показать файлы, в относительном пути которых есть подстрока.
-    """
+    """Печатает индекс файлов из базы (с необязательным фильтром вывода)."""
     query = "SELECT rel_path, size, file_type FROM files WHERE status = 'present'"
     params = []
     if ext_filter:
@@ -40,3 +35,17 @@ def print_file_list(conn, ext_filter=None, name_filter=None):
     print("-" * 60)
     for r in rows:
         print(f"{human_size(r['size']):>9}  {r['file_type']:<8}  {r['rel_path']}")
+
+
+def print_duplicates(groups):
+    """Печатает группы файлов-дубликатов (одинаковый хэш)."""
+    if not groups:
+        print("\nДубликаты не найдены.")
+        return
+    total = sum(len(paths) for _h, _s, paths in groups)
+    print(f"\nГрупп дубликатов: {len(groups)} (всего файлов: {total})")
+    print("=" * 60)
+    for i, (h, size, paths) in enumerate(groups, 1):
+        print(f"\nГруппа {i} | {len(paths)} файла(ов) | {human_size(size)} | {h[:12]}…")
+        for rel in paths:
+            print(f"   - {rel}")
