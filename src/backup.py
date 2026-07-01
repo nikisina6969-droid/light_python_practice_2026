@@ -1,5 +1,6 @@
 """Сравнение исходной папки с резервной копией."""
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import scanner
@@ -33,3 +34,23 @@ def compare(source, backup):
         elif duplicates.file_hash(Path(source) / rel) != duplicates.file_hash(Path(backup) / rel):
             changed.append(rel)
     return {"missing": missing, "changed": changed, "extra": extra}
+
+
+def save_check(conn, source, backup, diff):
+    """Сохраняет результат проверки и её детали в SQLite (история запусков)."""
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    cur = conn.execute(
+        "INSERT INTO backup_checks (source, backup, checked_at, missing, changed, extra) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (str(source), str(backup), now,
+         len(diff["missing"]), len(diff["changed"]), len(diff["extra"])),
+    )
+    check_id = cur.lastrowid
+    for diff_type in ("missing", "changed", "extra"):
+        for rel in diff[diff_type]:
+            conn.execute(
+                "INSERT INTO backup_diffs (check_id, rel_path, diff_type) VALUES (?, ?, ?)",
+                (check_id, rel, diff_type),
+            )
+    conn.commit()
+    return check_id
