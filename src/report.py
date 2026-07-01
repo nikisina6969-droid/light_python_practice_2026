@@ -2,7 +2,6 @@
 
 
 def human_size(n):
-    """Размер в человекочитаемом виде."""
     size = float(n)
     for unit in ("Б", "КБ", "МБ", "ГБ"):
         if size < 1024 or unit == "ГБ":
@@ -13,8 +12,7 @@ def human_size(n):
 
 
 def print_file_list(conn, ext_filter=None, name_filter=None):
-    """Печатает индекс файлов из базы (с необязательным фильтром вывода)."""
-    query = "SELECT rel_path, size, file_type FROM files WHERE status = 'present'"
+    query = "SELECT rel_path, size, file_type FROM files WHERE status='present'"
     params = []
     if ext_filter:
         ext = ext_filter.lower()
@@ -26,7 +24,6 @@ def print_file_list(conn, ext_filter=None, name_filter=None):
         query += " AND lower(rel_path) LIKE ?"
         params.append(f"%{name_filter.lower()}%")
     query += " ORDER BY rel_path"
-
     rows = conn.execute(query, params).fetchall()
     if not rows:
         print("Файлы не найдены.")
@@ -38,7 +35,6 @@ def print_file_list(conn, ext_filter=None, name_filter=None):
 
 
 def print_duplicates(groups):
-    """Печатает группы файлов-дубликатов (одинаковый хэш)."""
     if not groups:
         print("\nДубликаты не найдены.")
         return
@@ -49,3 +45,36 @@ def print_duplicates(groups):
         print(f"\nГруппа {i} | {len(paths)} файла(ов) | {human_size(size)} | {h[:12]}…")
         for rel in paths:
             print(f"   - {rel}")
+
+
+def _section(title, items):
+    print(f"\n{title}: {len(items)}")
+    for rel in items:
+        print(f"   - {rel}")
+
+
+def print_backup(diff):
+    """Печатает итог сверки с резервной копией."""
+    print("\nСверка резервной копии")
+    print("=" * 60)
+    _section("Отсутствуют в копии", diff["missing"])
+    _section("Изменены", diff["changed"])
+    _section("Лишние в копии", diff["extra"])
+    if not any(diff.values()):
+        print("\nРазличий не найдено — копия актуальна.")
+
+
+def print_history(conn, limit=10):
+    """Печатает историю последних проверок резервной копии."""
+    rows = conn.execute(
+        "SELECT checked_at, missing, changed, extra FROM backup_checks "
+        "ORDER BY id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    if not rows:
+        print("\nИстория проверок пуста.")
+        return
+    print(f"\nИстория проверок (последние {len(rows)}):")
+    print("-" * 60)
+    for r in rows:
+        print(f"{r['checked_at']}   отсутствуют: {r['missing']}   "
+              f"изменены: {r['changed']}   лишние: {r['extra']}")
