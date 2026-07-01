@@ -1,4 +1,8 @@
-"""Рекурсивный обход папки и сохранение индекса в SQLite."""
+"""Рекурсивный обход папки и сохранение индекса в SQLite.
+
+Обход дерева написан вручную: функция _walk вызывает саму себя для каждой
+вложенной папки (рекурсия), а не использует готовый os.walk.
+"""
 
 import os
 from datetime import datetime, timezone
@@ -25,21 +29,26 @@ def file_type(ext):
     return "other"
 
 
-def scan_folder(root):
-    """Рекурсивно обходит папку и возвращает список метаданных всех файлов.
+def _walk(current, root, result):
+    """Рекурсивно обходит папку current, складывая файлы в список result.
 
-    Пути в индексе относительные — относительно корня сканирования.
+    Для каждой вложенной папки функция вызывает саму себя (рекурсия) —
+    «проваливается» на уровень ниже. root нужен, чтобы считать путь
+    относительным от корня сканирования, result — общий накопитель файлов.
     """
-    root = Path(root)
-    result = []
-    for dirpath, _dirnames, filenames in os.walk(root):
-        for name in filenames:
-            full = Path(dirpath) / name
+    try:
+        entries = list(os.scandir(current))
+    except OSError:
+        return
+    for entry in entries:
+        if entry.is_dir(follow_symlinks=False):
+            _walk(Path(entry.path), root, result)      # рекурсивный вызов — спускаемся в подпапку
+        elif entry.is_file(follow_symlinks=False):
             try:
-                st = full.stat()
+                st = entry.stat()
             except OSError:
-                # Битые ссылки и недоступные файлы пропускаем.
                 continue
+            full = Path(entry.path)
             ext = full.suffix.lower()
             result.append({
                 "rel_path": full.relative_to(root).as_posix(),
@@ -48,6 +57,16 @@ def scan_folder(root):
                 "ext": ext,
                 "file_type": file_type(ext),
             })
+
+
+def scan_folder(root):
+    """Возвращает список метаданных всех файлов папки (обход — ручной рекурсией).
+
+    Пути в индексе относительные — относительно корня сканирования.
+    """
+    root = Path(root)
+    result = []
+    _walk(root, root, result)
     return result
 
 
@@ -76,13 +95,9 @@ def save_index(conn, files, root):
             """,
             {**f, "scanned_at": now},
         )
-    # Файлы, которые были в индексе, но не встретились при обходе.
-    for row in conn.execute("SELECT rel_path FROM files WHERE status = 'present'").fetchall():
+    for row in conn.execute("SELECT rel_path FROM files WHERE status='present'").fetchall():
         if row["rel_path"] not in seen:
-            conn.execute(
-                "UPDATE files SET status = 'missing' WHERE rel_path = ?",
-                (row["rel_path"],),
-            )
+            conn.execute("UPDATE files SET status='missing' WHERE rel_path=?", (row["rel_path"],))
     conn.execute(
         "INSERT INTO scans (root, started_at, files_seen) VALUES (?, ?, ?)",
         (str(Path(root).resolve()), now, len(files)),
