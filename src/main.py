@@ -64,6 +64,7 @@ def main(argv=None):
         report.print_duplicates(duplicates.find_duplicates(conn))
     else:
         report.print_file_list(conn, args.filter_ext, args.filter_name)
+        report.print_missing(conn)
 
     if args.history:
         report.print_history(conn)

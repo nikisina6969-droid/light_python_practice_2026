@@ -34,6 +34,19 @@ def print_file_list(conn, ext_filter=None, name_filter=None):
         print(f"{human_size(r['size']):>9}  {r['file_type']:<8}  {r['rel_path']}")
 
 
+def print_missing(conn):
+    """Печатает файлы, которые были в индексе, но исчезли из папки."""
+    rows = conn.execute(
+        "SELECT rel_path FROM files WHERE status='missing' ORDER BY rel_path"
+    ).fetchall()
+    if not rows:
+        return
+    print(f"\nУдалены (отсутствуют с прошлого скана): {len(rows)}")
+    print("-" * 60)
+    for r in rows:
+        print(f"   - {r['rel_path']}")
+
+
 def print_duplicates(groups):
     if not groups:
         print("\nДубликаты не найдены.")
