@@ -8,8 +8,7 @@ from pathlib import Path
 
 DEFAULT_DB_PATH = Path("data") / "app.db"
 
-# Минимальная схема под индекс файлов.
-# Поля hash/hashed_mtime заполняются на этапе поиска дубликатов.
+# Индекс файлов и журнал запусков сканирования.
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS files (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,6 +31,27 @@ CREATE TABLE IF NOT EXISTS scans (
 );
 """
 
+# Результаты сверки с резервной копией и история проверок.
+BACKUP_SCHEMA = """
+CREATE TABLE IF NOT EXISTS backup_checks (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    source     TEXT    NOT NULL,
+    backup     TEXT    NOT NULL,
+    checked_at TEXT    NOT NULL,
+    missing    INTEGER NOT NULL DEFAULT 0,
+    changed    INTEGER NOT NULL DEFAULT 0,
+    extra      INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS backup_diffs (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    check_id  INTEGER NOT NULL,
+    rel_path  TEXT    NOT NULL,
+    diff_type TEXT    NOT NULL,
+    FOREIGN KEY (check_id) REFERENCES backup_checks(id)
+);
+"""
+
 
 def connect(db_path=DEFAULT_DB_PATH):
     """Открывает соединение с базой, создавая папку при необходимости."""
@@ -45,4 +65,5 @@ def connect(db_path=DEFAULT_DB_PATH):
 def init_db(conn):
     """Создаёт таблицы, если их ещё нет."""
     conn.executescript(SCHEMA)
+    conn.executescript(BACKUP_SCHEMA)
     conn.commit()
