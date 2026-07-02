@@ -49,18 +49,26 @@ def update_hashes(conn, root):
 def find_duplicates(conn):
     """Возвращает группы файлов с одинаковым хэшем (2+ файла).
 
-    Формат: список кортежей (hash, size, [rel_path, ...]).
+    Группировка выполняется одним SQL-запросом: GROUP BY по хэшу и HAVING
+    COUNT(*) > 1 оставляет только повторяющиеся, а group_concat собирает пути
+    группы в одну строку (разделитель — перевод строки). Формат результата:
+    список кортежей (hash, size, [rel_path, ...]).
     """
     rows = conn.execute(
-        "SELECT hash, size, rel_path FROM files "
-        "WHERE status='present' AND hash IS NOT NULL ORDER BY hash, rel_path"
+        """
+        SELECT hash,
+               size,
+               COUNT(*) AS cnt,
+               group_concat(rel_path, char(10)) AS paths
+        FROM (
+            SELECT hash, size, rel_path
+            FROM files
+            WHERE status = 'present' AND hash IS NOT NULL
+            ORDER BY rel_path
+        )
+        GROUP BY hash
+        HAVING cnt > 1
+        ORDER BY hash
+        """
     ).fetchall()
-    groups = {}
-    for r in rows:
-        groups.setdefault(r["hash"], {"size": r["size"], "paths": []})
-        groups[r["hash"]]["paths"].append(r["rel_path"])
-    result = [
-        (h, g["size"], g["paths"])
-        for h, g in groups.items() if len(g["paths"]) > 1
-    ]
-    return result
+    return [(r["hash"], r["size"], r["paths"].split("\n")) for r in rows]
