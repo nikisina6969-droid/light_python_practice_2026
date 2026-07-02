@@ -12,16 +12,32 @@ def _index(root):
     return {f["rel_path"]: f for f in scanner.scan_folder(root)}
 
 
-def compare(source, backup):
+def _match(meta, rel, ext_filter, name_filter):
+    """Проверяет, подходит ли файл под фильтры (расширение / подстрока имени)."""
+    if ext_filter:
+        ext = ext_filter.lower()
+        if not ext.startswith("."):
+            ext = "." + ext
+        if meta["ext"] != ext:
+            return False
+    if name_filter and name_filter.lower() not in rel.lower():
+        return False
+    return True
+
+
+def compare(source, backup, ext_filter=None, name_filter=None):
     """Сравнивает исходную папку с резервной копией.
 
+    Если заданы фильтры, в сравнение попадают только подходящие файлы.
     Возвращает словарь со списками относительных путей:
       missing — есть в источнике, но нет в копии;
       changed — есть в обоих, но содержимое отличается;
       extra   — лишние файлы, которых нет в источнике.
     """
-    src = _index(source)
-    bak = _index(backup)
+    src = {rel: m for rel, m in _index(source).items()
+           if _match(m, rel, ext_filter, name_filter)}
+    bak = {rel: m for rel, m in _index(backup).items()
+           if _match(m, rel, ext_filter, name_filter)}
     src_paths, bak_paths = set(src), set(bak)
 
     missing = sorted(src_paths - bak_paths)

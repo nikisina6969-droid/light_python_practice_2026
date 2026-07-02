@@ -23,9 +23,9 @@ def build_parser():
     parser.add_argument("--db", default=str(db.DEFAULT_DB_PATH),
                         help="Путь к файлу базы SQLite (по умолчанию data/app.db)")
     parser.add_argument("--filter-ext", metavar="EXT",
-                        help="Показать только файлы с расширением, напр. .txt")
+                        help="Только файлы с расширением, напр. .txt (для списка и бэкапа)")
     parser.add_argument("--filter-name", metavar="SUB",
-                        help="Показать только файлы с подстрокой в пути")
+                        help="Только файлы с подстрокой в пути (для списка и бэкапа)")
     parser.add_argument("--duplicates", action="store_true",
                         help="Посчитать хэши и показать группы дубликатов")
     parser.add_argument("--backup", metavar="BACKUP_PATH",
@@ -56,7 +56,7 @@ def main(argv=None):
             print(f"Ошибка: папка резервной копии не найдена: {bpath}")
             conn.close()
             return 1
-        diff = backup.compare(target, bpath)
+        diff = backup.compare(target, bpath, args.filter_ext, args.filter_name)
         backup.save_check(conn, target.resolve(), bpath.resolve(), diff)
         report.print_backup(diff)
     elif args.duplicates:
